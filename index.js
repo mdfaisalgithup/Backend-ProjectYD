@@ -10,6 +10,9 @@ import os from 'os';
 
 import http from 'http';
 import { Server } from 'socket.io';
+import ffmpegPath from "ffmpeg-static";
+ffmpeg.setFfmpegPath(ffmpegPath);
+
 
 const app = express();
 const server = http.createServer(app);
