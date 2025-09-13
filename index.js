@@ -258,7 +258,7 @@ audioStream.pipe(audioWriteStream);
         .outputOptions(["-c:v copy", "-c:a aac"])
         .save(outputFile)
         .on("end", () => {
-          console.log("Merge complete!");
+          
           resolve();
         })
         .on("error", reject);
@@ -291,26 +291,6 @@ audioStream.pipe(audioWriteStream);
 io.on('connection', (socket) => {
 console.log('User connected:', socket.id);
 
-// down
-
-
-// ---- Socket.IO connection ----
-
-
-
-
-  // Client theke message receive
-  // socket.on('chatM', () => {
-  // //   console.log('Message from client:', msg);
-
-    
-
-  //   // Sob client e pathai
-  //   // io.emit('chatMessage', {bb: 44});
-
-
-  // });
-
 
 
 
@@ -324,5 +304,5 @@ console.log('User connected:', socket.id);
 })
 
 server.listen(port, () => {
-  console.log(`🚀 Server running on ${port}`);
+  console.log(`Server running on ${port}`);
 });
