@@ -17,7 +17,7 @@ RUN npm install
 COPY server/ ./
 
 # Step 7: Expose port
-EXPOSE 3000
+EXPOSE 5000
 
 # Step 8: Set ffmpeg path for fluent-ffmpeg
 ENV FFMPEG_PATH=/usr/bin/ffmpeg
