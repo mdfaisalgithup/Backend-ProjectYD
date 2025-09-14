@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
+
 import http from 'http';
 import { Server } from 'socket.io';
 import ffmpegPath from "ffmpeg-static";
@@ -55,41 +56,40 @@ app.post('/api/folo', async (req, res) => {
 
     const videoDuration = formatDuration(parseInt(info.videoDetails.lengthSeconds));
 
-    const hdMp4Formats = Array.from(
-      new Map(
-        info.formats
-          .filter(format =>
-            format.container === 'mp4' &&
-            format.qualityLabel &&
-            ( format.qualityLabel.includes('144') ||
-              format.qualityLabel.includes('240') ||
-              format.qualityLabel.includes('360') ||
-              format.qualityLabel.includes('480') ||
-              format.qualityLabel.includes('720') ||
-              format.qualityLabel.includes('1080') ||
-              format.qualityLabel.includes('1440') ||
-              format.qualityLabel.includes('2160')
-            ) &&
-            format.hasVideo
-          )
-          .map(format => [
-            format.itag,
-            {
-              itag: format.itag,
-              qualityLabel: format.qualityLabel,
-              quality: format.quality || 'Unknown',
-              url: format.url,
-              size: format.contentLength
-                ? (parseInt(format.contentLength) / (1024 * 1024)).toFixed(2)
-                : 'Unknown',
-              duration: videoDuration,
-            }
-          ])
-      ).values()
-    );
+
+         
+   const hdMp4Formats = Array.from(
+  new Map(
+    info.formats
+      .filter(format =>
+        format.container === 'mp4' &&
+        format.qualityLabel &&
+        ['144','240','360','480','720','1080','1440','2160'].some(q => format.qualityLabel.includes(q)) &&
+        format.hasVideo
+      )
+      .map(format => [
+        format.qualityLabel, // deduplicate by qualityLabel instead of itag
+        {
+          itag: format.itag,
+          qualityLabel: format.qualityLabel,
+          quality: format.quality || 'Unknown',
+          url: format.url,
+          size: format.contentLength
+            ? (parseInt(format.contentLength) / (1024 * 1024)).toFixed(2)
+            : 'Unknown',
+          duration: videoDuration,
+        }
+      ])
+  ).values()
+);
+
+
+
 
     const thumbnail = info.videoDetails.thumbnails.slice(-1)[0].url;
 
+
+  
     const audioFormats = Array.from(
       new Map(
         info.formats
@@ -113,6 +113,8 @@ app.post('/api/folo', async (req, res) => {
       ).values()
     );
 
+
+
     if (audioFormats.length === 0) {
       throw new Error('No suitable audio format found');
     }
@@ -122,6 +124,8 @@ app.post('/api/folo', async (req, res) => {
     );
 
     const ausioSizesFor = parseFloat(audioFormat?.size).toFixed(2);
+
+
 
     res.json({
       title: info.videoDetails.title,
@@ -178,10 +182,14 @@ app.post("/download", async (req, res) => {
         f.url === videoFormatsT.url
     );
 
+
+
     if (videoFormats.length === 0) {
       throw new Error("No suitable video format found");
     }
     const videoFormat = videoFormats[0];
+
+
 
     // audio filter
     const audioFormats = info?.formats.filter(
@@ -211,7 +219,7 @@ app.post("/download", async (req, res) => {
   
 
 
-    let videoDownloaded = 0;
+let videoDownloaded = 0;
 let audioDownloaded = 0;
 
 // ---- Video progress ----
@@ -254,18 +262,27 @@ audioStream.pipe(audioWriteStream);
     ]);
 
     // merge with ffmpeg
-    await new Promise((resolve, reject) => {
-      ffmpeg()
-        .input(videoTemp)
-        .input(audioTemp)
-        .outputOptions(["-c:v copy", "-c:a aac"])
-        .save(outputFile)
-        .on("end", () => {
-          
-          resolve();
-        })
-        .on("error", reject);
+  await new Promise((resolve, reject) => {
+  ffmpeg()
+    .input(videoTemp)
+    .input(audioTemp)
+    .outputOptions([
+      "-c:v libx264",   // re-encode video to H.264 (widely compatible)
+      "-c:a aac",       // encode audio to AAC
+      "-preset veryfast", // optional: faster encoding
+      "-shortest"       // trim to shortest input
+    ])
+    .save(outputFile)
+    .on("end", () => {
+      console.log("Merge finished!");
+      resolve();
+    })
+    .on("error", (err) => {
+      console.error("FFmpeg error:", err);
+      reject(err);
     });
+});
+
 
     const fileBuffer = fs.readFileSync(outputFile);
 
@@ -289,6 +306,7 @@ audioStream.pipe(audioWriteStream);
 
 
 });
+
 
 
 io.on('connection', (socket) => {
