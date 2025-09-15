@@ -263,24 +263,24 @@ audioStream.pipe(audioWriteStream);
 
     // merge with ffmpeg
   await new Promise((resolve, reject) => {
-  ffmpeg()
-    .input(videoTemp)
-    .input(audioTemp)
-    .outputOptions([
-      "-c:v libx264",   // re-encode video to H.264 (widely compatible)
-      "-c:a aac",       // encode audio to AAC
-      "-preset veryfast", // optional: faster encoding
-      "-shortest"       // trim to shortest input
-    ])
-    .save(outputFile)
-    .on("end", () => {
-      console.log("Merge finished!");
-      resolve();
-    })
-    .on("error", (err) => {
-      console.error("FFmpeg error:", err);
-      reject(err);
-    });
+ ffmpeg()
+  .input(videoTemp)
+  .input(audioTemp)
+  .outputOptions([
+    "-c:v copy",   // video re-encode করবে না
+    "-c:a aac",    // শুধু audio encode হবে (AAC)
+    "-shortest"
+  ])
+  .save(outputFile)
+  .on("end", () => {
+    console.log("Merge finished!");
+    resolve();
+  })
+  .on("error", (err) => {
+    console.error("FFmpeg error:", err);
+    reject(err);
+  });
+
 });
 
 
