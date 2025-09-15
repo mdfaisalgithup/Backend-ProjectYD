@@ -1,37 +1,30 @@
-
-
 import express from "express";
 import cors from "cors";
 import ytdl from "@distube/ytdl-core";
-import ffmpeg from 'fluent-ffmpeg';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
+import ffmpeg from "fluent-ffmpeg";
+import fs from "fs";
+import path from "path";
+import os from "os";
 
-
-import http from 'http';
-import { Server } from 'socket.io';
+import http from "http";
+import { Server } from "socket.io";
 import ffmpegPath from "ffmpeg-static";
 ffmpeg.setFfmpegPath(ffmpegPath);
-
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*",       // testing e sob origin allow
+    origin: "*", // testing e sob origin allow
     methods: ["GET", "POST"]
   }
 });
 
-
 const port = 5000;
 
-app.use(cors());
-app.use(express.json());
-
-
-
+// ---------- Middleware ----------
+app.use(cors());          // sob route e cors enable
+app.use(express.json());  // json parse
 
 
 
@@ -141,7 +134,8 @@ app.post('/api/folo', async (req, res) => {
       audioFormat: audioFormat,
       videoUrl: url,
       vthumbnail: thumbnail,
-      ausioSizesFor: ausioSizesFor
+      ausioSizesFor: ausioSizesFor,
+
     });
 
   } catch (error) {
@@ -152,8 +146,8 @@ app.post('/api/folo', async (req, res) => {
 
 
 // GET route
-app.get('/api/folo', (req, res) => {
-  res.json({ msg: "Hello GET working!" });
+app.get('/', (req, res) => {
+  res.send("Hello! Not Work API" );
 });
 
 
@@ -168,12 +162,14 @@ app.get('/api/folo', (req, res) => {
 
 app.post("/download", async (req, res) => {
   try {
-    const { formataData, socketId } = req.body;
+    const { formataData, socketId, infos } = req.body;
 
     const videoFormatsT = formataData[0];
     const audioFormatsT = formataData[1];
     const videoPageUrl = formataData[2];
 
+
+    
     const videoTemp = path.join(os.tmpdir(), "video_temp.mp4");
     const audioTemp = path.join(os.tmpdir(), "audio_temp.mp3");
     const outputFile = path.join(os.tmpdir(), "merged_output.mp4");
@@ -185,6 +181,7 @@ app.post("/download", async (req, res) => {
       f => f.itag === videoFormatsT.itag || f.url === videoFormatsT.url
     );
     if (!videoFormat) throw new Error("No suitable video format found");
+
 
     // ----------------- Audio Filter -----------------
     const audioFormat = info.formats.find(
@@ -198,6 +195,8 @@ app.post("/download", async (req, res) => {
 
     const videoStream = ytdl.downloadFromInfo(info, { format: videoFormat });
     const audioStream = ytdl.downloadFromInfo(info, { format: audioFormat });
+    // ----------------- Video Stream -----------------
+
 
     const videoWriteStream = fs.createWriteStream(videoTemp);
     const audioWriteStream = fs.createWriteStream(audioTemp);
