@@ -57,15 +57,17 @@ app.post('/api/folo', async (req, res) => {
     const videoDuration = formatDuration(parseInt(info.videoDetails.lengthSeconds));
 
 
-         
+
+
+          // ['144p','240p','360p','480p','720p','1080p','1440p','2160p']
    const hdMp4Formats = Array.from(
   new Map(
     info.formats
       .filter(format =>
         format.container === 'mp4' &&
         format.qualityLabel &&
-        ['144','240','360','480','720','1080','1440','2160'].some(q => format.qualityLabel.includes(q)) &&
-        format.hasVideo
+        ['144p','240p','360p','480p','720p','1080p','1440p','2160p'].some(q => format.qualityLabel.includes(q)) &&
+        format.hasVideo == true && format.url
       )
       .map(format => [
         format.qualityLabel, // deduplicate by qualityLabel instead of itag
@@ -74,6 +76,7 @@ app.post('/api/folo', async (req, res) => {
           qualityLabel: format.qualityLabel,
           quality: format.quality || 'Unknown',
           url: format.url,
+          hasVideo: format.hasVideo,
           size: format.contentLength
             ? (parseInt(format.contentLength) / (1024 * 1024)).toFixed(2)
             : 'Unknown',
@@ -86,14 +89,17 @@ app.post('/api/folo', async (req, res) => {
 
 
 
+
+
     const thumbnail = info.videoDetails.thumbnails.slice(-1)[0].url;
+
 
 
   
     const audioFormats = Array.from(
       new Map(
         info.formats
-          .filter(audioFor => audioFor.hasAudio && !audioFor.hasVideo && audioFor.container === 'mp4')
+          .filter(audioFor => audioFor.hasAudio == true && !audioFor.hasVideo)
           .map(audioFor => [
             audioFor.itag,
             {
@@ -102,6 +108,7 @@ app.post('/api/folo', async (req, res) => {
               url: audioFor.url,
               bitrate: audioFor.bitrate,
               audioQuality: audioFor.audioQuality,
+              hasAudio: audioFor.hasAudio,
               size: audioFor.contentLength
                 ? (parseInt(audioFor.contentLength) / (1024 * 1024)).toFixed(2)
                 : 'Unknown',
@@ -112,6 +119,7 @@ app.post('/api/folo', async (req, res) => {
           ])
       ).values()
     );
+
 
 
 
@@ -150,162 +158,138 @@ app.get('/api/folo', (req, res) => {
 
 
 
+
+
+
+
 // GET route
+
+
+
 app.post("/download", async (req, res) => {
-
-
-
   try {
-    const  { formataData, socketId }  = req.body;
+    const { formataData, socketId } = req.body;
 
-    const videoFormatsT = formataData[0]; // object with url property
-    const audioFormatsT = formataData[1]; // object with url property
-    const videoPageUrl = formataData[2]; // youtube video page url string
-
-    // const sizeVS =
-    //   parseFloat(videoFormatsT.size) + parseFloat(audioFormatsT.size);
-   
-
+    const videoFormatsT = formataData[0];
+    const audioFormatsT = formataData[1];
+    const videoPageUrl = formataData[2];
 
     const videoTemp = path.join(os.tmpdir(), "video_temp.mp4");
     const audioTemp = path.join(os.tmpdir(), "audio_temp.mp3");
     const outputFile = path.join(os.tmpdir(), "merged_output.mp4");
 
-    // info
     const info = await ytdl.getInfo(videoPageUrl);
 
-    // video filter
-    const videoFormats = info?.formats.filter(
-      (f) =>
-        (f.itag === videoFormatsT.itag &&
-          f.qualityLabel === videoFormatsT.qualityLabel) ||
-        f.url === videoFormatsT.url
+    // ----------------- Video Filter -----------------
+    const videoFormat = info.formats.find(
+      f => f.itag === videoFormatsT.itag || f.url === videoFormatsT.url
     );
+    if (!videoFormat) throw new Error("No suitable video format found");
 
-
-
-    if (videoFormats.length === 0) {
-      throw new Error("No suitable video format found");
-    }
-    const videoFormat = videoFormats[0];
-
-
-
-    // audio filter
-    const audioFormats = info?.formats.filter(
-      (a) =>
-        (a.itag === audioFormatsT.itag &&
-          a.audioQuality === audioFormatsT.audioQuality) ||
-        a.url === audioFormatsT.url
+    // ----------------- Audio Filter -----------------
+    const audioFormat = info.formats.find(
+      a => a.itag === audioFormatsT.itag || a.url === audioFormatsT.url
     );
+    if (!audioFormat) throw new Error("No suitable audio format found");
 
-    if (audioFormats.length === 0) {
-      throw new Error("No suitable audio format found");
-    }
+    // ----------------- Download Streams -----------------
+    let videoDownloaded = 0;
+    let audioDownloaded = 0;
 
-    // pick best audio
-    const audioFormat = audioFormats.reduce((prev, curr) =>
-      (curr.bitrate || 0) > (prev.bitrate || 0) ? curr : prev
-    );
-
-    // streams
     const videoStream = ytdl.downloadFromInfo(info, { format: videoFormat });
     const audioStream = ytdl.downloadFromInfo(info, { format: audioFormat });
 
-    // write streams
     const videoWriteStream = fs.createWriteStream(videoTemp);
     const audioWriteStream = fs.createWriteStream(audioTemp);
 
-  
+    // Video progress
+    videoStream.on("data", chunk => {
+      videoDownloaded += chunk.length;
+      const videoMB = (videoDownloaded / (1024 * 1024)).toFixed(2);
+      const audioMB = (audioDownloaded / (1024 * 1024)).toFixed(2);
+      io.to(socketId).emit("videokoto", {
+        video: videoMB,
+        audio: audioMB,
+        total: (parseFloat(videoMB) + parseFloat(audioMB)).toFixed(2)
+      });
+    });
+    videoStream.pipe(videoWriteStream);
 
+    // Audio progress
+    audioStream.on("data", chunk => {
+      audioDownloaded += chunk.length;
+      const videoMB = (videoDownloaded / (1024 * 1024)).toFixed(2);
+      const audioMB = (audioDownloaded / (1024 * 1024)).toFixed(2);
+      io.to(socketId).emit("videokoto", {
+        video: videoMB,
+        audio: audioMB,
+        total: (parseFloat(videoMB) + parseFloat(audioMB)).toFixed(2)
+      });
+    });
+    audioStream.pipe(audioWriteStream);
 
-let videoDownloaded = 0;
-let audioDownloaded = 0;
-
-// ---- Video progress ----
-videoStream.on("data", (chunk) => {
-  videoDownloaded += chunk.length;
-
-  const videoMB = (videoDownloaded / (1024 * 1024)).toFixed(2);
-  const audioMB = (audioDownloaded / (1024 * 1024)).toFixed(2);
-  const totalMB = (parseFloat(videoMB) + parseFloat(audioMB)).toFixed(2);
-
-  io.to(socketId).emit("videokoto", {
-    video: videoMB,
-    audio: audioMB,
-    total: totalMB,
-  });
-});
-videoStream.pipe(videoWriteStream);
-
-// ---- Audio progress ----
-audioStream.on("data", (chunk) => {
-  audioDownloaded += chunk.length;
-
-  const videoMB = (videoDownloaded / (1024 * 1024)).toFixed(2);
-  const audioMB = (audioDownloaded / (1024 * 1024)).toFixed(2);
-  const totalMB = (parseFloat(videoMB) + parseFloat(audioMB)).toFixed(2);
-
-  io.to(socketId).emit("videokoto", {
-    video: videoMB,
-    audio: audioMB,
-    total: totalMB,
-  });
-});
-audioStream.pipe(audioWriteStream);
-
-
-
+    // Wait until both downloads finish
     await Promise.all([
-      new Promise((res) => videoWriteStream.on("finish", res)),
-      new Promise((res) => audioWriteStream.on("finish", res)),
+      new Promise(res => videoWriteStream.on("close", res)),
+      new Promise(res => audioWriteStream.on("close", res))
     ]);
 
-    // merge with ffmpeg
-  await new Promise((resolve, reject) => {
- ffmpeg()
-  .input(videoTemp)
-  .input(audioTemp)
-  .outputOptions([
-    "-c:v copy",   // video re-encode করবে না
-    "-c:a aac",    // শুধু audio encode হবে (AAC)
-    "-shortest"
-  ])
-  .save(outputFile)
-  .on("end", () => {
-    console.log("Merge finished!");
-    resolve();
-  })
-  .on("error", (err) => {
-    console.error("FFmpeg error:", err);
-    reject(err);
-  });
+    // ----------------- Merge -----------------
+    // await new Promise((resolve, reject) => {
+    //   ffmpeg()
+    //     .input(videoTemp)
+    //     .input(audioTemp)
+    //     .outputOptions(["-c:v libx264", "-preset veryfast", "-c:a aac", "-shortest"])
+    //     .save(outputFile)
+    //      .on("end", () => {
+    //   // Merge finished → send socket message
+    //   io.to(socketId).emit("mergeStatus", { status: "finished", message: "✅ Video & audio merged successfully!" });
+    //   resolve();
+    // })
+    //     .on("error", reject);
+    // });
 
+
+    await new Promise((resolve, reject) => {
+  ffmpeg()
+    .input(videoTemp)
+    .input(audioTemp)
+    .outputOptions(["-c:v libx264", "-preset ultrafast", "-c:a aac", "-shortest"])
+    .on("progress", (progress) => {
+      // progress.percent gives approximate merge completion
+      io.to(socketId).emit("mergeProgress", {
+        percent: progress.percent ? progress.percent.toFixed(2) : 0,
+        timemark: progress.timemark
+      });
+    })
+    .on("end", () => {
+      io.to(socketId).emit("mergeStatus", { status: "finished", message: "Merge complete!" });
+      resolve();
+    })
+    .on("error", (err) => {
+      io.to(socketId).emit("mergeStatus", { status: "error", message: "Merge failed", error: err.message });
+      reject(err);
+    })
+    .save(outputFile);
 });
 
-
+    // ----------------- Send Response -----------------
     const fileBuffer = fs.readFileSync(outputFile);
 
-    // cleanup
     fs.unlinkSync(videoTemp);
     fs.unlinkSync(audioTemp);
     fs.unlinkSync(outputFile);
 
     res.setHeader("Content-Type", "video/mp4");
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="merged_video.mp4"'
-    );
+    res.setHeader("Content-Disposition", 'attachment; filename="merged_video.mp4"');
     res.setHeader("Content-Length", fileBuffer.byteLength);
 
     res.send(fileBuffer);
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: error.message });
   }
-
-
 });
+
 
 
 
