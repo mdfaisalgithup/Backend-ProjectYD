@@ -162,7 +162,7 @@ app.get('/', (req, res) => {
 
 app.post("/download", async (req, res) => {
   try {
-    const { formataData, socketId, infos } = req.body;
+    const { formataData, socketId } = req.body;
 
     const videoFormatsT = formataData[0];
     const audioFormatsT = formataData[1];
@@ -193,9 +193,16 @@ app.post("/download", async (req, res) => {
     let videoDownloaded = 0;
     let audioDownloaded = 0;
 
-    const videoStream = ytdl.downloadFromInfo(info, { format: videoFormat });
-    const audioStream = ytdl.downloadFromInfo(info, { format: audioFormat });
-    // ----------------- Video Stream -----------------
+ // ----------------- Video Stream -----------------
+const videoStream = ytdl.downloadFromInfo(info, {
+  format: videoFormat,
+  highWaterMark: 1024 * 1024 * 10 // 10 MB buffer
+});
+
+const audioStream = ytdl.downloadFromInfo(info, {
+  format: audioFormat,
+  highWaterMark: 1024 * 1024 * 10 // 10 MB buffer
+});
 
 
     const videoWriteStream = fs.createWriteStream(videoTemp);
@@ -253,7 +260,11 @@ app.post("/download", async (req, res) => {
   ffmpeg()
     .input(videoTemp)
     .input(audioTemp)
-    .outputOptions(["-c:v libx264", "-preset ultrafast", "-c:a aac", "-shortest"])
+    .outputOptions([  
+    "-c:v copy",
+    "-c:a copy",
+    "-movflags +faststart",
+    "-shortest"])
     .on("progress", (progress) => {
       // progress.percent gives approximate merge completion
       io.to(socketId).emit("mergeProgress", {
